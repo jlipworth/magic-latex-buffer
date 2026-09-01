@@ -112,6 +112,62 @@
                 (ml-test/search-outcome
                  #'ml/search-regexp regex backward point-safe)))))))
 
+(defun ml-test/reference-prettify-symbols (beg end)
+  "Run the original one-regexp-per-symbol implementation from BEG to END."
+  (dolist (symbol ml/symbols)
+    (save-excursion
+      (goto-char beg)
+      (let ((regex (car symbol)))
+        (while (ignore-errors (ml/search-regexp regex end nil t))
+          (let* ((old-overlay
+                  (ml/overlay-at
+                   (match-beginning 0) 'category 'ml/ov-pretty))
+                 (priority-base
+                  (and old-overlay
+                       (or (overlay-get old-overlay 'priority) 1)))
+                 (old-display
+                  (and old-overlay (overlay-get old-overlay 'display))))
+            (unless (stringp old-display)
+              (ml/make-pretty-overlay
+               (match-beginning 0) (match-end 0)
+               'priority (when old-overlay (1+ priority-base))
+               'display
+               (propertize
+                (eval (cdr symbol)) 'display old-display)))))))))
+
+(defun ml-test/symbol-snapshot (prettifier content)
+  "Run PRETTIFIER over CONTENT and return canonical symbol overlays."
+  (with-temp-buffer
+    (insert content)
+    (setq buffer-file-name "magic-latex-symbol-parity.tex")
+    (latex-mode)
+    (font-lock-mode 1)
+    (magic-latex-buffer 1)
+    (font-lock-ensure)
+    (ml-test/clear-overlays)
+    (let ((ml/jit-point (point-max)))
+      (set-syntax-table ml/syntax-table)
+      (goto-char (point-min))
+      (funcall prettifier (point-min) (point-max))
+      (sort
+       (mapcar
+        (lambda (overlay)
+          (list
+           (overlay-start overlay)
+           (overlay-end overlay)
+           (buffer-substring-no-properties
+            (overlay-start overlay) (overlay-end overlay))
+           (format "%S" (overlay-get overlay 'display))
+           (format "%S" (overlay-get overlay 'priority))))
+        (cl-remove-if-not
+         (lambda (overlay)
+           (eq (overlay-get overlay 'category) 'ml/ov-pretty))
+         (overlays-in (point-min) (point-max))))
+       (lambda (left right)
+         (or (< (car left) (car right))
+             (and (= (car left) (car right))
+                  (< (cadr left) (cadr right)))))))))
+
 (ert-deftest ml-test/search-regexp-skips-escaped-commands ()
   (with-temp-buffer
     (insert "\\\\alpha then \\alpha")
@@ -141,6 +197,28 @@
     (should (ml/skip-blocks 0))
     (should (= (point) (point-max)))
     (should (equal '(1 1) (match-data t)))))
+
+(ert-deftest ml-test/symbol-plan-preserves-every-rule ()
+  (let ((rules
+         (apply
+          #'+
+          (mapcar
+           (lambda (segment)
+             (if (eq 'exact (car segment))
+                 (hash-table-count (nth 2 segment))
+               1))
+           (ml/build-symbol-plan)))))
+    (should (= (length ml/symbols) rules))
+    (should (< (length (ml/build-symbol-plan)) (length ml/symbols)))))
+
+(ert-deftest ml-test/segmented-symbols-match-reference-on-generic-fixture ()
+  (let ((content (with-temp-buffer
+                   (insert-file-contents ml-test/fixture)
+                   (buffer-string))))
+    (should
+     (equal
+      (ml-test/symbol-snapshot #'ml-test/reference-prettify-symbols content)
+      (ml-test/symbol-snapshot #'ml/prettify-symbols content)))))
 
 (ert-deftest ml-test/generic-fixture-exercises-all-display-families ()
   (let ((content (with-temp-buffer
