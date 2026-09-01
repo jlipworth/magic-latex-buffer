@@ -583,6 +583,33 @@ with. The content overlay will have PROPS as its properties."
       (setq props (cddr props)))
     ov2))
 
+(defconst ml/block-command-regexp
+  "\\\\\\(?:tiny\\|scriptsize\\|footnotesize\\|small\\|large\\|Large\\|LARGE\\|huge\\|Huge\\|tt\\|em\\|it\\|sl\\|bf\\(?:series\\)?\\)\\>\\|\\\\color"
+  "Regexp matching commands handled by `ml/jit-block-highlighter'.")
+
+(defun ml/block-command-face (command color)
+  "Return the face for block COMMAND and optional COLOR."
+  (cond ((string= command "tiny") 'ml/tiny)
+        ((string= command "scriptsize") 'ml/script)
+        ((string= command "footnotesize") 'ml/footnote)
+        ((string= command "small") 'ml/small)
+        ((string= command "large") 'ml/large)
+        ((string= command "Large") 'ml/llarge)
+        ((string= command "LARGE") 'ml/xlarge)
+        ((string= command "huge") 'ml/huge)
+        ((string= command "Huge") 'ml/hhuge)
+        ((string= command "tt") 'ml/type)
+        ((member command '("em" "it" "sl")) 'italic)
+        ((member command '("bf" "bfseries")) 'bold)
+        ((string= color "black") 'ml/black)
+        ((string= color "white") 'ml/white)
+        ((string= color "red") 'ml/red)
+        ((string= color "green") 'ml/green)
+        ((string= color "blue") 'ml/blue)
+        ((string= color "cyan") 'ml/cyan)
+        ((string= color "magenta") 'ml/magenta)
+        ((string= color "yellow") 'ml/yellow)))
+
 (defun ml/remove-block-overlays (beg end)
   "Remove all command overlays and their content overlays from
 BEG END."
@@ -597,12 +624,28 @@ BEG END."
         (progn (ml/skip-blocks 1 nil t) (point))
       (error (goto-char 1)))
     (ml/remove-block-overlays (point) end)
-    (dolist (command ml/block-commands)
-      (save-excursion
-        (while (funcall (car command) end)
-          (ml/make-block-overlay (match-beginning 0) (match-end 0)
-                                 (match-beginning 1) (match-end 1)
-                                 'face (eval (cdr command))))))))
+    (save-excursion
+      (while (ml/search-regexp-noerror ml/block-command-regexp end)
+        (let* ((command-beg (match-beginning 0))
+               (command-end (match-end 0))
+               (command (substring (match-string-no-properties 0) 1))
+               (color-data
+                (when (string= command "color")
+                  (condition-case nil
+                      (save-excursion
+                        (ml/read-args nil 1)
+                        (cons (match-string-no-properties 0) (point)))
+                    (error nil)))))
+          (when (or (not (string= command "color")) color-data)
+            (let ((content-beg (if color-data (cdr color-data) (point)))
+                  (content-end
+                   (condition-case nil
+                       (save-excursion (ml/skip-blocks 1 t) (point))
+                     (error (1+ (buffer-size))))))
+              (ml/make-block-overlay
+               command-beg command-end content-beg content-end
+               'face (ml/block-command-face
+                      command (car-safe color-data))))))))))
 
 ;; + block aligner
 
