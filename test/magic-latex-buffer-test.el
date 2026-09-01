@@ -306,9 +306,10 @@
           #'+
           (mapcar
            (lambda (segment)
-             (if (eq 'exact (car segment))
-                 (hash-table-count (nth 2 segment))
-               1))
+             (pcase (car segment)
+               ('exact (hash-table-count (nth 2 segment)))
+               ('not (length (nth 2 segment)))
+               (_ 1)))
            (ml/build-symbol-plan)))))
     (should (= (length ml/symbols) rules))
     (should (< (length (ml/build-symbol-plan)) (length ml/symbols)))))
