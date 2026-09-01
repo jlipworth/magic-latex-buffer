@@ -1,0 +1,64 @@
+#+title: Magic LaTeX tests and performance benchmark
+
+This directory contains a deterministic 128 KiB LaTeX document, behavioral
+ERT tests, visual-parity checks, and a viewport benchmark.  The fixture is
+synthetic and contains no personal or proprietary material.
+
+* Run the tests
+
+#+begin_src shell
+make test
+#+end_src
+
+The tests verify escaped-command, backward-search, point-safety, failure, and
+match-data behavior.  They also compare every symbol overlay produced by the
+segmented scanner against the original scanner over the generic fixture.
+
+* Rebuild the fixture
+
+#+begin_src shell
+make fixture
+#+end_src
+
+The generator is deterministic.  Pass a different size in KiB directly when
+a larger stress document is useful:
+
+#+begin_src shell
+emacs -Q --batch -l test/generate-large-fixture.el -- /tmp/large.tex 512
+#+end_src
+
+* Compare revisions
+
+Run the same 100-sample benchmark against =master= and the current checkout:
+
+#+begin_src shell
+MLB_BENCH_ITERATIONS=20 test/compare-performance.sh master
+#+end_src
+
+The script prints both TSV result sets.  =MLB_BENCH_ITERATIONS= defaults to 20
+and each iteration samples five 80-line viewports.
+
+* Reference measurements
+
+These measurements were collected on 2026-09-01 using GNU Emacs 30.2 on an
+Apple M3 Ultra.  Times are milliseconds; each row contains 100 samples.
+
+| Revision             | Scenario | Median | p95   | Mean overlays |
+|----------------------+----------+--------+-------+---------------|
+| upstream =master=    | full     | 27.573 | 44.236 |         495.6 |
+| iterative search     | full     | 13.710 | 18.010 |         495.6 |
+| segmented symbols    | full     |  9.796 | 14.438 |         495.6 |
+| upstream =master=    | symbols  | 20.979 | 33.614 |         180.8 |
+| iterative search     | symbols  |  7.542 |  7.954 |         180.8 |
+| segmented symbols    | symbols  |  3.482 |  3.785 |         180.8 |
+
+The final implementation reduced the complete median by 64% and p95 by 67%.
+The isolated symbol pass fell by 83% at the median and 89% at p95.  Overlay
+counts and canonical source/display/priority records were identical.
+
+An iterative block-traversal experiment is intentionally kept on the separate
+=codex/iterative-blocks= branch.  It prevents evaluation-depth failures, but
+adds a full backward scan when the reference implementation would fail early;
+on this fixture it increased the complete median from 9.796 ms to 20.878 ms.
+That correctness/performance tradeoff should not be mixed into the unambiguous
+search and symbol speedup.
