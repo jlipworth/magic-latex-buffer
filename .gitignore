@@ -1,2 +1,2 @@
 *.elc
-
+test/fixtures/large-document.tex
