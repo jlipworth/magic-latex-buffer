@@ -338,6 +338,8 @@
           "{\\color{red} r} {\\color{green} s} {\\color{blue} t} "
           "{\\color{cyan} u} {\\color{magenta} v} {\\color{yellow} w} "
           "{\\color{purple} unsupported} % \\large ignored\n"
+          "{\\colorbox{red}{not-a-declaration}} {\\color missing-braces} "
+          "{\\large unterminated\n"
           "\\\\large escaped\n")))
     (should
      (equal
