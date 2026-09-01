@@ -66,6 +66,52 @@
                 '(ml/ov-pretty ml/ov-block)))
         (overlays-in (point-min) (point-max)))))))
 
+(defun ml-test/reference-search-regexp
+    (regex &optional bound backward point-safe)
+  "Original recursive implementation of `ml/search-regexp'."
+  (ml/safe-excursion
+   (let ((case-fold-search nil))
+     (if backward
+         (search-backward-regexp regex bound)
+       (search-forward-regexp regex bound)))
+   (or (save-match-data
+         (save-excursion
+           (and (goto-char (match-beginning 0))
+                (not (and point-safe
+                          (< (point) ml/jit-point)
+                          (< ml/jit-point (match-end 0))))
+                (looking-back "\\([^\\\\]\\|^\\)\\(\\\\\\\\\\)*" (point-min))
+                (not (ml/skip-comments-and-verbs backward)))))
+       (ml-test/reference-search-regexp
+        regex bound backward point-safe))))
+
+(defun ml-test/search-outcome (search regex backward point-safe)
+  "Capture the observable result of calling SEARCH."
+  (condition-case error-data
+      (let ((value (funcall search regex nil backward point-safe)))
+        (list 'success value (point) (match-data t) (match-string 0)))
+    (error
+     (list 'error (car error-data) (error-message-string error-data) (point)))))
+
+(defun ml-test/compare-searches
+    (content regex start jit-point &optional backward point-safe ignored-range)
+  "Compare reference and optimized searches over CONTENT from START."
+  (with-temp-buffer
+    (insert content)
+    (when ignored-range
+      (put-text-property (car ignored-range) (cdr ignored-range)
+                         'face 'font-lock-comment-face))
+    (let ((ml/jit-point jit-point))
+      (goto-char start)
+      (let ((reference
+             (ml-test/search-outcome
+              #'ml-test/reference-search-regexp regex backward point-safe)))
+        (goto-char start)
+        (should
+         (equal reference
+                (ml-test/search-outcome
+                 #'ml/search-regexp regex backward point-safe)))))))
+
 (ert-deftest ml-test/search-regexp-skips-escaped-commands ()
   (with-temp-buffer
     (insert "\\\\alpha then \\alpha")
@@ -74,6 +120,18 @@
       (should (ml/search-regexp "\\\\alpha\\>"))
       (should (equal "\\alpha" (match-string-no-properties 0)))
       (should (= 14 (match-beginning 0))))))
+
+(ert-deftest ml-test/search-regexp-preserves-reference-contract ()
+  (let ((alpha "\\\\alpha\\>"))
+    (ml-test/compare-searches "\\alpha and \\alpha" alpha 1 1)
+    (ml-test/compare-searches "\\alpha and \\alpha" alpha 18 1 t)
+    (ml-test/compare-searches "\\\\alpha then \\alpha" alpha 1 1)
+    (ml-test/compare-searches "\\alpha then \\\\alpha" alpha 20 1 t)
+    (ml-test/compare-searches "\\alpha then \\alpha" alpha 1 4 nil t)
+    (ml-test/compare-searches
+     "x\\alpha then \\alpha" alpha 1 1 nil nil '(1 . 8))
+    (ml-test/compare-searches "\\\\alpha" alpha 1 1)
+    (ml-test/compare-searches "text" "[" 3 1)))
 
 (ert-deftest ml-test/skip-blocks-preserves-match-data ()
   (with-temp-buffer

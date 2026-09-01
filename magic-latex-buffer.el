@@ -248,25 +248,53 @@ non-nil iff the cursor is moved."
       (when pos (ml/skip-comments-and-verbs backward))
       t)))
 
+(defun ml/unescaped-p (position)
+  "Return non-nil when POSITION follows an even number of backslashes."
+  (let ((cursor position)
+        (backslashes 0))
+    (while (and (> cursor (point-min))
+                (eq ?\\ (char-before cursor)))
+      (setq cursor (1- cursor)
+            backslashes (1+ backslashes)))
+    (zerop (% backslashes 2))))
+
 (defun ml/search-regexp (regex &optional bound backward point-safe)
   "Like `search-regexp' but skips escaped chars, comments and
 verbish environments. This function raise an error on
 failure. When POINT-SAFE is non-nil, the point must not be in the
 matching string."
-  (ml/safe-excursion
-   (let ((case-fold-search nil))
-     (if backward
-         (search-backward-regexp regex bound)
-       (search-forward-regexp regex bound)))
-   (or (save-match-data
-         (save-excursion
-           (and (goto-char (match-beginning 0))
-                (not (and point-safe
-                          (< (point) ml/jit-point)
-                          (< ml/jit-point (match-end 0))))
-                (looking-back "\\([^\\\\]\\|^\\)\\(\\\\\\\\\\)*" (point-min))
-                (not (ml/skip-comments-and-verbs backward)))))
-       (ml/search-regexp regex bound backward point-safe))))
+  (let ((start (point))
+        (case-fold-search nil)
+        found
+        valid)
+    (condition-case error-data
+        (progn
+          (while
+              (progn
+                (setq found
+                      (if backward
+                          (re-search-backward regex bound t)
+                        (re-search-forward regex bound t)))
+                (when found
+                  (setq valid
+                        (save-match-data
+                          (save-excursion
+                            (goto-char (match-beginning 0))
+                            (and
+                             (not
+                              (and point-safe
+                                   (< (point) ml/jit-point)
+                                   (< ml/jit-point (match-end 0))))
+                             (ml/unescaped-p (point))
+                             (not
+                              (ml/skip-comments-and-verbs backward)))))))
+                (and found (not valid))))
+          (unless found
+            (signal 'search-failed (list regex)))
+          valid)
+      (error
+       (goto-char start)
+       (error (error-message-string error-data))))))
 
 (defun ml/skip-blocks (n &optional exclusive backward brace-only)
   "Skip blocks forward until the point reaches n-level upwards.
