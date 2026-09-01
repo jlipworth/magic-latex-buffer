@@ -52,6 +52,11 @@
            '(ml/ov-pretty ml/ov-block ml/ov-align)))
    (overlays-in (point-min) (point-max))))
 
+(defun ml-bench/invalidate-jit-region (beg end)
+  "Mark BEG through END as unfontified before a JIT sample."
+  (with-silent-modifications
+    (put-text-property beg end 'fontified nil)))
+
 (defun ml-bench/run-with (beg end symbols suscript blocks align)
   "Run Magic LaTeX from BEG to END with selected display features."
   (let ((magic-latex-enable-pretty-symbols symbols)
@@ -68,7 +73,7 @@
 (defconst ml-bench/scenarios
   `((jit
      ,#'jit-lock-fontify-now
-     ,#'font-lock-flush)
+     ,#'ml-bench/invalidate-jit-region)
     (full
      ,(lambda (beg end) (ml-bench/run-with beg end t t t t)))
     (symbols
