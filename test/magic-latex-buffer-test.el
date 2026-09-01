@@ -273,4 +273,76 @@
     (let ((plan (ml/symbol-plan)))
       (should (eq plan (ml/symbol-plan))))))
 
+(defun ml-test/reference-jit-block-highlighter (_ end)
+  "Run the original one-pass-per-command block highlighter to END."
+  (when magic-latex-enable-block-highlight
+    (condition-case nil
+        (progn (ml/skip-blocks 1 nil t) (point))
+      (error (goto-char 1)))
+    (ml/remove-block-overlays (point) end)
+    (dolist (command ml/block-commands)
+      (save-excursion
+        (while (funcall (car command) end)
+          (ml/make-block-overlay (match-beginning 0) (match-end 0)
+                                 (match-beginning 1) (match-end 1)
+                                 'face (eval (cdr command))))))))
+
+(defun ml-test/block-snapshot (highlighter content)
+  "Run HIGHLIGHTER over CONTENT and capture block rendering semantics."
+  (with-temp-buffer
+    (insert content)
+    (setq buffer-file-name "magic-latex-block-parity.tex")
+    (latex-mode)
+    (font-lock-mode 1)
+    (magic-latex-buffer 1)
+    (font-lock-ensure)
+    (remove-overlays)
+    (let ((ml/jit-point (point-max))
+          (magic-latex-enable-block-align nil))
+      (set-syntax-table ml/syntax-table)
+      (goto-char (point-min))
+      (funcall highlighter (point-min) (point-max))
+      (list
+       (sort
+        (mapcar
+         (lambda (overlay)
+           (let ((partner (overlay-get overlay 'partner)))
+             (list
+              (overlay-start overlay)
+              (overlay-end overlay)
+              (buffer-substring-no-properties
+               (overlay-start overlay) (overlay-end overlay))
+              (overlay-start partner)
+              (overlay-end partner)
+              (format "%S" (overlay-get partner 'face)))))
+         (cl-remove-if-not
+          (lambda (overlay)
+            (eq (overlay-get overlay 'category) 'ml/ov-block))
+          (overlays-in (point-min) (point-max))))
+        (lambda (left right)
+          (or (< (car left) (car right))
+              (and (= (car left) (car right))
+                   (< (cadr left) (cadr right))))))
+       (cl-loop for position from (point-min) below (point-max)
+                collect (format "%S" (get-char-property position 'face)))))))
+
+(ert-deftest ml-test/block-highlighter-preserves-nesting-and-command-order ()
+  (let ((content
+         (concat
+          "{\\large outer {\\bfseries bold {\\color{blue} blue}} tail}\n"
+          "{\\small one \\large two \\bfseries three}\n"
+          "{\\tiny a} {\\scriptsize b} {\\footnotesize c} {\\small d} "
+          "{\\large e} {\\Large f} {\\LARGE g} {\\huge h} {\\Huge i} "
+          "{\\tt j} {\\em k} {\\it l} {\\sl m} {\\bf n} "
+          "{\\bfseries o} {\\color{black} p} {\\color{white} q} "
+          "{\\color{red} r} {\\color{green} s} {\\color{blue} t} "
+          "{\\color{cyan} u} {\\color{magenta} v} {\\color{yellow} w} "
+          "{\\color{purple} unsupported} % \\large ignored\n"
+          "\\\\large escaped\n")))
+    (should
+     (equal
+      (ml-test/block-snapshot
+       #'ml-test/reference-jit-block-highlighter content)
+      (ml-test/block-snapshot #'ml/jit-block-highlighter content)))))
+
 ;;; magic-latex-buffer-test.el ends here
