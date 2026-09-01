@@ -76,3 +76,29 @@ adds a full backward scan when the reference implementation would fail early;
 on this fixture it increased the complete median from 9.796 ms to 20.878 ms.
 That correctness/performance tradeoff should not be mixed into the unambiguous
 search and symbol speedup.
+
+* Follow-up measurements
+
+The corrected, byte-compiled harness was run with 30 iterations (150 samples)
+per revision.  Each implementation commit was compared directly with its
+parent so that the improvements can be reviewed independently.
+
+| Change                         | Scenario | Parent median | Commit median | Reduction |
+|--------------------------------+----------+---------------+---------------+-----------|
+| Single-pass block declarations | jit      |         9.298 |         8.125 |       13% |
+| Single-pass block declarations | full     |        10.302 |         9.101 |       12% |
+| Single-pass block declarations | blocks   |         5.385 |         4.175 |       22% |
+| Broader built-in symbol batches | jit      |         8.206 |         7.291 |       11% |
+| Broader built-in symbol batches | full     |         9.305 |         8.328 |       10% |
+| Broader built-in symbol batches | symbols  |         2.011 |         1.006 |       50% |
+
+Together, the follow-ups reduce =jit= and =full= medians by 21% relative to the
+initial performance branch.  Against upstream =master=, the final compiled
+=jit= median falls from 27.811 ms to 7.197 ms, =full= from 29.549 ms to
+8.439 ms, and =symbols= from 19.546 ms to 0.971 ms.  Overlay counts are
+unchanged.  A dense negated-symbol stress document also improves rather than
+regresses: its symbol median falls from 4.889 ms to 2.287 ms.
+
+The broader batching applies only when the built-in symbol table is unchanged.
+Customized symbol tables retain the order-preserving plan, including overlaps
+and duplicate rules.
