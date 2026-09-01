@@ -528,47 +528,6 @@ will be K-th ARG if succeeded."
              res))
        (error (ml/search-block regex option args point-safe limit))))))
 
-(defconst ml/block-commands
-  (let ((tiny (ml/block-matcher "\\\\tiny\\>" nil nil))
-        (script (ml/block-matcher "\\\\scriptsize\\>" nil nil))
-        (footnote (ml/block-matcher "\\\\footnotesize\\>" nil nil))
-        (small (ml/block-matcher "\\\\small\\>" nil nil))
-        (large (ml/block-matcher "\\\\large\\>" nil nil))
-        (llarge (ml/block-matcher "\\\\Large\\>" nil nil))
-        (xlarge (ml/block-matcher "\\\\LARGE\\>" nil nil))
-        (huge (ml/block-matcher "\\\\huge\\>" nil nil))
-        (hhuge (ml/block-matcher "\\\\Huge\\>" nil nil))
-        (type (ml/block-matcher "\\\\tt\\>" nil nil))
-        (italic (ml/block-matcher "\\\\\\(?:em\\|it\\|sl\\)\\>" nil nil))
-        (bold (ml/block-matcher "\\\\bf\\(?:series\\)?\\>" nil nil))
-        (color (ml/block-matcher "\\\\color" nil 1)))
-    `((,tiny . 'ml/tiny)
-      (,script . 'ml/script)
-      (,footnote . 'ml/footnote)
-      (,small . 'ml/small)
-      (,large . 'ml/large)
-      (,llarge . 'ml/llarge)
-      (,xlarge . 'ml/xlarge)
-      (,huge . 'ml/huge)
-      (,hhuge . 'ml/hhuge)
-      (,type . 'ml/type)
-      (,italic . 'italic)
-      (,bold . 'bold)
-      (,color . (let ((col (match-string 2)))
-                  (cond ((string= col "black") 'ml/black)
-                        ((string= col "white") 'ml/white)
-                        ((string= col "red") 'ml/red)
-                        ((string= col "green") 'ml/green)
-                        ((string= col "blue") 'ml/blue)
-                        ((string= col "cyan") 'ml/cyan)
-                        ((string= col "magenta") 'ml/magenta)
-                        ((string= col "yellow") 'ml/yellow))))))
-  "An alist of (MATCHER . FACE). MATCHER is a function that takes
-an argument, limit of the search, and does a forward search like
-`search-forward-regexp' then sets match-data as needed. FACE is
-*a sexp* which evaluates to a face. (match-string 1) will be
-propertized with the face.")
-
 (defun ml/make-block-overlay (command-beg command-end content-beg content-end &rest props)
   "Make a pair of overlays, a content overlay and a command
 overlay. The command overlay will have `partner' property, that
