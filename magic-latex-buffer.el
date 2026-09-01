@@ -981,6 +981,9 @@ can assume that the expressions are evaluated immediately after
 regex search, so that you can use match data in the
 expressions.")
 
+(defconst ml/default-symbols (copy-tree ml/symbols)
+  "Original `ml/symbols' table used by the optimized default plan.")
+
 (defvar ml/symbol-plan-cache nil
   "Cached segmented search plan for `ml/symbols'.")
 
@@ -1009,7 +1012,7 @@ expressions.")
           (concat (regexp-opt (nreverse sources)) "\\>")
           table)))
 
-(defun ml/build-symbol-plan ()
+(defun ml/build-ordered-symbol-plan ()
   "Build an order-preserving segmented search plan for `ml/symbols'."
   (let ((counts (make-hash-table :test #'equal))
         exact-run
@@ -1033,6 +1036,33 @@ expressions.")
       (flush-exact-run))
     (nreverse plan)))
 
+(defun ml/build-default-symbol-plan ()
+  "Build a compact search plan for the built-in symbol table."
+  (let ((counts (make-hash-table :test #'equal))
+        exacts not-symbols regexps)
+    (dolist (symbol ml/symbols)
+      (when-let ((source (ml/exact-symbol-source symbol)))
+        (puthash source (1+ (gethash source counts 0)) counts)))
+    (dolist (symbol ml/symbols)
+      (let ((source (ml/exact-symbol-source symbol)))
+        (cond ((string-prefix-p "\\\\not[" (car symbol))
+               (push symbol not-symbols))
+              ((and source (= 1 (gethash source counts)))
+               (push symbol exacts))
+              (t
+               (push (list 'regexp (car symbol) symbol) regexps)))))
+    (append
+     (list (list 'not "\\\\not[ \t\n]*\\\\[[:alpha:]@]+\\>"
+                 (nreverse not-symbols) (make-hash-table :test #'equal))
+           (ml/exact-symbol-segment (nreverse exacts)))
+     (nreverse regexps))))
+
+(defun ml/build-symbol-plan ()
+  "Build a segmented search plan for `ml/symbols'."
+  (if (equal ml/symbols ml/default-symbols)
+      (ml/build-default-symbol-plan)
+    (ml/build-ordered-symbol-plan)))
+
 (defun ml/symbol-plan ()
   "Return a cached search plan corresponding to `ml/symbols'."
   (unless (eq ml/symbol-plan-source ml/symbols)
@@ -1053,6 +1083,26 @@ expressions.")
        'priority (when old-overlay (1+ priority-base))
        'display (propertize (eval (cdr symbol)) 'display old-display)))))
 
+(defun ml/not-symbol-at-point (segment)
+  "Return the matching negated symbol from plan SEGMENT."
+  (let* ((source (match-string-no-properties 0))
+         (cache (nth 3 segment))
+         (cached (gethash source cache cache))
+         (case-fold-search nil))
+    (if (not (eq cached cache))
+        cached
+      (let ((start (match-beginning 0))
+            symbol)
+        (save-excursion
+          (goto-char start)
+          (catch 'found
+            (dolist (candidate (nth 2 segment))
+              (when (looking-at (car candidate))
+                (setq symbol candidate)
+                (throw 'found candidate)))))
+        (puthash source symbol cache)
+        symbol))))
+
 (defun ml/prettify-symbols (beg end)
   "Create symbol overlays between BEG and END."
   (dolist (segment (ml/symbol-plan))
@@ -1060,10 +1110,14 @@ expressions.")
       (goto-char beg)
       (let ((regex (cadr segment)))
         (while (ml/search-regexp-noerror regex end nil t)
-          (ml/apply-symbol
-           (if (eq 'exact (car segment))
-               (gethash (match-string-no-properties 0) (nth 2 segment))
-             (nth 2 segment))))))))
+          (when-let
+              ((symbol
+                (pcase (car segment)
+                  ('exact
+                   (gethash (match-string-no-properties 0) (nth 2 segment)))
+                  ('not (ml/not-symbol-at-point segment))
+                  (_ (nth 2 segment)))))
+            (ml/apply-symbol symbol)))))))
 
 (defun ml/make-pretty-overlay (from to &rest props)
   "Make an overlay from FROM to TO, that has PROPS as its
