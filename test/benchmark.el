@@ -52,22 +52,33 @@
            '(ml/ov-pretty ml/ov-block ml/ov-align)))
    (overlays-in (point-min) (point-max))))
 
-(defun ml-bench/run-with (beg end symbols suscript blocks)
+(defun ml-bench/run-with (beg end symbols suscript blocks align)
   "Run Magic LaTeX from BEG to END with selected display features."
   (let ((magic-latex-enable-pretty-symbols symbols)
         (magic-latex-enable-suscript suscript)
         (magic-latex-enable-block-highlight blocks)
-        (magic-latex-enable-block-align nil))
+        (magic-latex-enable-block-align align))
     (goto-char beg)
     (ml/jit-block-highlighter beg end)
+    (goto-char beg)
+    (ml/jit-block-aligner beg end)
     (goto-char beg)
     (ml/jit-prettifier beg end)))
 
 (defconst ml-bench/scenarios
-  `((full . ,(lambda (beg end) (ml-bench/run-with beg end t t t)))
-    (symbols . ,(lambda (beg end) (ml-bench/run-with beg end t nil nil)))
-    (no-symbols . ,(lambda (beg end) (ml-bench/run-with beg end nil t t)))
-    (blocks . ,(lambda (beg end) (ml-bench/run-with beg end nil nil t)))))
+  `((jit
+     ,#'jit-lock-fontify-now
+     ,#'font-lock-flush)
+    (full
+     ,(lambda (beg end) (ml-bench/run-with beg end t t t t)))
+    (symbols
+     ,(lambda (beg end) (ml-bench/run-with beg end t nil nil nil)))
+    (no-symbols
+     ,(lambda (beg end) (ml-bench/run-with beg end nil t t t)))
+    (blocks
+     ,(lambda (beg end) (ml-bench/run-with beg end nil nil t nil)))
+    (align
+     ,(lambda (beg end) (ml-bench/run-with beg end nil nil nil t)))))
 
 (defun ml-bench/percentile (sorted fraction)
   "Return FRACTION percentile from SORTED numeric values."
@@ -75,14 +86,17 @@
             (floor (* fraction (length sorted))))
        sorted))
 
-(defun ml-bench/measure (function regions iterations)
-  "Measure FUNCTION over REGIONS for ITERATIONS traversals."
+(defun ml-bench/measure (function regions iterations &optional prepare)
+  "Measure FUNCTION over REGIONS for ITERATIONS traversals.
+Call PREPARE outside the timed interval before each sample."
   (let (elapsed overlays)
     (dotimes (_ iterations)
       (dolist (region regions)
         (ml-bench/clear-overlays)
         (garbage-collect)
         (goto-char (car region))
+        (when prepare
+          (funcall prepare (car region) (cdr region)))
         (let ((started (current-time)))
           (funcall function (car region) (cdr region))
           (push (float-time (time-subtract (current-time) started)) elapsed))
@@ -120,7 +134,8 @@
         (dolist (scenario ml-bench/scenarios)
           (pcase-let ((`(,mean ,median ,p95 ,maximum ,overlays)
                        (ml-bench/measure
-                        (cdr scenario) regions iterations)))
+                        (nth 1 scenario) regions iterations
+                        (nth 2 scenario))))
             (princ
              (format "%s\t%d\t%.3f\t%.3f\t%.3f\t%.3f\t%.1f\n"
                      (car scenario) (* iterations (length regions))

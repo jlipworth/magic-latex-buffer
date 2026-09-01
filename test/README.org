@@ -29,19 +29,33 @@ emacs -Q --batch -l test/generate-large-fixture.el -- /tmp/large.tex 512
 
 * Compare revisions
 
-Run the same 100-sample benchmark against =master= and the current checkout:
+Run the same 100-sample benchmark against =master= and =HEAD=:
 
 #+begin_src shell
 MLB_BENCH_ITERATIONS=20 test/compare-performance.sh master
 #+end_src
 
 The script prints both TSV result sets.  =MLB_BENCH_ITERATIONS= defaults to 20
-and each iteration samples five 80-line viewports.
+and each iteration samples five 80-line viewports.  It byte-compiles both
+revisions by default, matching a normal package installation.  Set
+=MLB_BENCH_COMPILED=0= to compare source-loaded code, or pass a second revision
+to compare any two commits:
+
+#+begin_src shell
+test/compare-performance.sh HEAD^ HEAD
+#+end_src
+
+The =jit= scenario times =jit-lock-fontify-now= after invalidating each sampled
+viewport.  =full= directly attributes the package's block highlighting,
+alignment, sub/superscript, and symbol passes.  The remaining scenarios isolate
+individual feature families.
 
 * Reference measurements
 
-These measurements were collected on 2026-09-01 using GNU Emacs 30.2 on an
-Apple M3 Ultra.  Times are milliseconds; each row contains 100 samples.
+These historical measurements were collected on 2026-09-01 using source-loaded
+GNU Emacs 30.2 on an Apple M3 Ultra.  Times are milliseconds; each row contains
+100 samples.  The historical =full= scenario did not include the alignment
+pass; use the current harness for complete compiled measurements.
 
 | Revision             | Scenario | Median | p95   | Mean overlays |
 |----------------------+----------+--------+-------+---------------|
