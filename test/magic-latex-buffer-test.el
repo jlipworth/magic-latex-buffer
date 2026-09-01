@@ -94,6 +94,24 @@
         (should (= three (match-beginning 0)))
         (should-error (ml/search-regexp "\\\\alpha\\>"))))))
 
+(ert-deftest ml-test/search-regexp-noerror-reports-ordinary-failure ()
+  (with-temp-buffer
+    (insert "plain text")
+    (goto-char (point-min))
+    (let ((ml/jit-point (point-min)))
+      (should-not (ml/search-regexp-noerror "\\\\alpha\\>")))))
+
+(ert-deftest ml-test/search-regexp-handles-many-rejected-matches ()
+  (with-temp-buffer
+    (dotimes (_ 2000)
+      (insert "\\\\alpha "))
+    (let ((expected (point)))
+      (insert "\\alpha")
+      (goto-char (point-min))
+      (let ((ml/jit-point (point-min)))
+        (should (ml/search-regexp "\\\\alpha\\>"))
+        (should (= expected (match-beginning 0)))))))
+
 (ert-deftest ml-test/skip-blocks-preserves-match-data ()
   (with-temp-buffer
     (insert "{outer {inner} tail}")
