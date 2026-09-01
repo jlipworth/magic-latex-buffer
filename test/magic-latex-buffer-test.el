@@ -347,4 +347,14 @@
        #'ml-test/reference-jit-block-highlighter content)
       (ml-test/block-snapshot #'ml/jit-block-highlighter content)))))
 
+(ert-deftest ml-test/block-highlighter-matches-reference-on-generic-fixture ()
+  (let ((content (with-temp-buffer
+                   (insert-file-contents ml-test/fixture)
+                   (buffer-string))))
+    (should
+     (equal
+      (ml-test/block-snapshot
+       #'ml-test/reference-jit-block-highlighter content)
+      (ml-test/block-snapshot #'ml/jit-block-highlighter content)))))
+
 ;;; magic-latex-buffer-test.el ends here
