@@ -342,6 +342,22 @@
         (ml-test/symbol-snapshot #'ml-test/reference-prettify-symbols content)
         (ml-test/symbol-snapshot #'ml/prettify-symbols content))))))
 
+(ert-deftest ml-test/negated-symbols-match-reference-on-dense-input ()
+  (let ((content
+         (mapconcat
+          #'identity
+          (make-list
+           100
+           (concat
+            "$\\not\\le \\not \\geq \\not\n\\subseteq "
+            "\\not\\rightarrow \\not \\Leftrightarrow$ "
+            "\\\\not\\le % \\not\\geq\n"))
+          "")))
+    (should
+     (equal
+      (ml-test/symbol-snapshot #'ml-test/reference-prettify-symbols content)
+      (ml-test/symbol-snapshot #'ml/prettify-symbols content)))))
+
 (ert-deftest ml-test/block-highlighter-preserves-nesting-and-command-order ()
   (let ((content
          (concat
