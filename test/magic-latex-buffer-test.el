@@ -112,42 +112,87 @@
                 (ml-test/search-outcome
                  #'ml/search-regexp regex backward point-safe)))))))
 
+(defmacro ml-test/with-reference-search (&rest body)
+  "Run BODY with every `ml/search-regexp' call routed to the original search."
+  `(cl-letf (((symbol-function 'ml/search-regexp)
+              #'ml-test/reference-search-regexp))
+     ,@body))
+
 (defun ml-test/reference-prettify-symbols (beg end)
   "Run the original one-regexp-per-symbol implementation from BEG to END."
-  (dolist (symbol ml/symbols)
-    (save-excursion
-      (goto-char beg)
-      (let ((regex (car symbol)))
-        (while (ignore-errors (ml/search-regexp regex end nil t))
-          (let* ((old-overlay
-                  (ml/overlay-at
-                   (match-beginning 0) 'category 'ml/ov-pretty))
-                 (priority-base
-                  (and old-overlay
-                       (or (overlay-get old-overlay 'priority) 1)))
-                 (old-display
-                  (and old-overlay (overlay-get old-overlay 'display))))
-            (unless (stringp old-display)
-              (ml/make-pretty-overlay
-               (match-beginning 0) (match-end 0)
-               'priority (when old-overlay (1+ priority-base))
-               'display
-               (propertize
-                (eval (cdr symbol)) 'display old-display)))))))))
+  (ml-test/with-reference-search
+   (dolist (symbol ml/symbols)
+     (save-excursion
+       (goto-char beg)
+       (let ((regex (car symbol)))
+         (while (ignore-errors (ml/search-regexp regex end nil t))
+           (let* ((old-overlay
+                   (ml/overlay-at
+                    (match-beginning 0) 'category 'ml/ov-pretty))
+                  (priority-base
+                   (and old-overlay
+                        (or (overlay-get old-overlay 'priority) 1)))
+                  (old-display
+                   (and old-overlay (overlay-get old-overlay 'display))))
+             (unless (stringp old-display)
+               (ml/make-pretty-overlay
+                (match-beginning 0) (match-end 0)
+                'priority (when old-overlay (1+ priority-base))
+                'display
+                (propertize
+                 (eval (cdr symbol)) 'display old-display))))))))))
+
+(defconst ml-test/reference-block-commands
+  (let ((tiny (ml/block-matcher "\\\\tiny\\>" nil nil))
+        (script (ml/block-matcher "\\\\scriptsize\\>" nil nil))
+        (footnote (ml/block-matcher "\\\\footnotesize\\>" nil nil))
+        (small (ml/block-matcher "\\\\small\\>" nil nil))
+        (large (ml/block-matcher "\\\\large\\>" nil nil))
+        (llarge (ml/block-matcher "\\\\Large\\>" nil nil))
+        (xlarge (ml/block-matcher "\\\\LARGE\\>" nil nil))
+        (huge (ml/block-matcher "\\\\huge\\>" nil nil))
+        (hhuge (ml/block-matcher "\\\\Huge\\>" nil nil))
+        (type (ml/block-matcher "\\\\tt\\>" nil nil))
+        (italic (ml/block-matcher "\\\\\\(?:em\\|it\\|sl\\)\\>" nil nil))
+        (bold (ml/block-matcher "\\\\bf\\(?:series\\)?\\>" nil nil))
+        (color (ml/block-matcher "\\\\color" nil 1)))
+    `((,tiny . 'ml/tiny)
+      (,script . 'ml/script)
+      (,footnote . 'ml/footnote)
+      (,small . 'ml/small)
+      (,large . 'ml/large)
+      (,llarge . 'ml/llarge)
+      (,xlarge . 'ml/xlarge)
+      (,huge . 'ml/huge)
+      (,hhuge . 'ml/hhuge)
+      (,type . 'ml/type)
+      (,italic . 'italic)
+      (,bold . 'bold)
+      (,color . (let ((col (match-string 2)))
+                  (cond ((string= col "black") 'ml/black)
+                        ((string= col "white") 'ml/white)
+                        ((string= col "red") 'ml/red)
+                        ((string= col "green") 'ml/green)
+                        ((string= col "blue") 'ml/blue)
+                        ((string= col "cyan") 'ml/cyan)
+                        ((string= col "magenta") 'ml/magenta)
+                        ((string= col "yellow") 'ml/yellow))))))
+  "The original (MATCHER . FACE) alist driving the reference highlighter.")
 
 (defun ml-test/reference-jit-block-highlighter (_ end)
   "Run the original one-pass-per-command block highlighter to END."
   (when magic-latex-enable-block-highlight
-    (condition-case nil
-        (progn (ml/skip-blocks 1 nil t) (point))
-      (error (goto-char 1)))
-    (ml/remove-block-overlays (point) end)
-    (dolist (command ml/block-commands)
-      (save-excursion
-        (while (funcall (car command) end)
-          (ml/make-block-overlay (match-beginning 0) (match-end 0)
-                                 (match-beginning 1) (match-end 1)
-                                 'face (eval (cdr command))))))))
+    (ml-test/with-reference-search
+     (condition-case nil
+         (progn (ml/skip-blocks 1 nil t) (point))
+       (error (goto-char 1)))
+     (ml/remove-block-overlays (point) end)
+     (dolist (command ml-test/reference-block-commands)
+       (save-excursion
+         (while (funcall (car command) end)
+           (ml/make-block-overlay (match-beginning 0) (match-end 0)
+                                  (match-beginning 1) (match-end 1)
+                                  'face (eval (cdr command)))))))))
 
 (defun ml-test/symbol-snapshot (prettifier content)
   "Run PRETTIFIER over CONTENT and return canonical symbol overlays."
@@ -240,6 +285,10 @@
     (ml-test/compare-searches
      "x\\alpha then \\alpha" alpha 1 1 nil nil '(1 . 8))
     (ml-test/compare-searches "\\\\alpha" alpha 1 1)
+    (ml-test/compare-searches
+     "\\alpha then \\alpha" alpha 19 1 t nil '(13 . 19))
+    (ml-test/compare-searches
+     "\\alpha then \\alpha" alpha 1 1 nil nil '(1 . 7))
     (ml-test/compare-searches "text" "[" 3 1)))
 
 (ert-deftest ml-test/skip-blocks-preserves-match-data ()
