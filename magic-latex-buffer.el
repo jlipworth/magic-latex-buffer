@@ -293,17 +293,9 @@ BOUND, BACKWARD, and POINT-SAFE have the meanings documented by
 verbish environments. This function raise an error on
 failure. When POINT-SAFE is non-nil, the point must not be in the
 matching string."
-  (let ((start (point)))
-    (condition-case error-data
-        (let ((valid
-               (ml/search-regexp-noerror
-                regex bound backward point-safe)))
-          (unless valid
-            (signal 'search-failed (list regex)))
-          valid)
-      (error
-       (goto-char start)
-       (error (error-message-string error-data))))))
+  (ml/safe-excursion
+   (or (ml/search-regexp-noerror regex bound backward point-safe)
+       (signal 'search-failed (list regex)))))
 
 (defun ml/skip-blocks (n &optional exclusive backward brace-only)
   "Skip blocks forward until the point reaches n-level upwards.
