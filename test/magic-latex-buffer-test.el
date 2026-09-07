@@ -240,4 +240,39 @@
            "\\begin{verbatim}\n\\alpha\n\\end{verbatim}\n"))))
     (should (= 1 (cl-count "\\alpha" snapshot :key #'caddr :test #'equal)))))
 
+(ert-deftest ml-test/search-regexp-handles-backslash-parity ()
+  (with-temp-buffer
+    (let (one three)
+      (dolist (count '(1 2 3 4))
+        (let ((begin (point)))
+          (insert (make-string count ?\\) "alpha ")
+          (pcase count
+            (1 (setq one begin))
+            (3 (setq three (+ begin 2))))))
+      (let ((ml/jit-point (point-min)))
+        (goto-char (point-min))
+        (should (ml/search-regexp "\\\\alpha\\>"))
+        (should (= one (match-beginning 0)))
+        (should (ml/search-regexp "\\\\alpha\\>"))
+        (should (= three (match-beginning 0)))
+        (should-error (ml/search-regexp "\\\\alpha\\>"))))))
+
+(ert-deftest ml-test/search-regexp-noerror-reports-ordinary-failure ()
+  (with-temp-buffer
+    (insert "plain text")
+    (goto-char (point-min))
+    (let ((ml/jit-point (point-min)))
+      (should-not (ml/search-regexp-noerror "\\\\alpha\\>")))))
+
+(ert-deftest ml-test/search-regexp-handles-many-rejected-matches ()
+  (with-temp-buffer
+    (dotimes (_ 2000)
+      (insert "\\\\alpha "))
+    (let ((expected (point)))
+      (insert "\\alpha")
+      (goto-char (point-min))
+      (let ((ml/jit-point (point-min)))
+        (should (ml/search-regexp "\\\\alpha\\>"))
+        (should (= expected (match-beginning 0)))))))
+
 ;;; magic-latex-buffer-test.el ends here
