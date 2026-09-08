@@ -1,56 +1,51 @@
-#+title: Magic LaTeX tests and performance benchmark
+* Tests and performance benchmark
 
-This directory contains a deterministic generator for a synthetic 128 KiB
-LaTeX fixture, behavioral ERT tests, overlay-parity checks, and a viewport
-benchmark.  The generated fixture contains no personal material and is not
-committed.
+The behavioral tests exercise the observable contract of the filtered
+regexp search, including direction, failure behavior, match data,
+escaped commands, ignored regions, and point safety.
 
-* Run the tests
+** Run the tests
 
-#+begin_src shell
-make test
-#+end_src
+: make test
 
-The fixture is generated automatically when needed.  The 13 tests cover the
-filtered-search contract, escaped commands, comments and verbatim regions,
-overlay parity, custom-rule precedence (including duplicates and capture
-expressions), cache reuse, and in-place edits to custom symbol rules.
+The symbol tests generate the fixture automatically and compare overlays
+against the original per-rule scanner. They cover custom-rule precedence,
+duplicates, capture expressions, and cache reuse and invalidation after
+in-place rule edits.
 
-The cache regression exercises regexp replacement, destructive regexp-string
-editing, whole-rule replacement, display replacement, and list extension.
+** Generate the performance fixture
 
-* Rebuild the fixture
+The benchmark input is deterministic and contains no personal or
+proprietary material. It is generated rather than committed to keep
+the patch small:
 
-#+begin_src shell
-make fixture
-#+end_src
+: make fixture
 
-The generator is deterministic.  To generate a larger stress document:
+Pass another size in KiB when a larger stress document is useful:
 
-#+begin_src shell
-emacs -Q --batch -l test/generate-large-fixture.el -- /tmp/large.tex 512
-#+end_src
+: emacs -Q --batch -l test/generate-large-fixture.el -- /tmp/large.tex 512
 
-* Compare revisions
+** Compare revisions
 
-Compare the merged iterative-search baseline with this branch:
+The comparison script builds isolated, byte-compiled copies of both
+revisions and measures five 80-line viewports per iteration. From this
+branch, compare merged PR #47 (=31eb152=) with the proposed change:
 
-#+begin_src shell
-git fetch upstream
-make fixture
-MLB_BENCH_ITERATIONS=30 test/compare-performance.sh 31eb152 HEAD
-#+end_src
+: make fixture
+: MLB_BENCH_ITERATIONS=30 test/compare-performance.sh 31eb152 HEAD
 
-Use the remote name configured for =zk-phi/magic-latex-buffer= if it is not
-=upstream=.  The script accepts any two local Git revisions and byte-compiles
-both by default.  Set =MLB_BENCH_COMPILED=0= to compare source-loaded code.
+The two arguments may be any locally available Git revisions. For
+example, use =origin/master= instead of =master= after fetching the
+upstream branch into a remote-tracking ref.
 
-Each iteration samples five 80-line viewports.  The =jit= scenario invalidates
-each viewport before calling =jit-lock-fontify-now=.  The =full= scenario times
-block highlighting, alignment, sub/superscripts, and symbols directly.  Other
-scenarios isolate individual feature families.
+Set =MLB_BENCH_COMPILED=0= to compare source-loaded code. The =jit=
+scenario invalidates the sampled viewport before timing
+=jit-lock-fontify-now=. The remaining scenarios directly time the
+complete Magic LaTeX pass or an individual display-feature family.
+Overlay counts are printed as a basic output-parity guard alongside
+the timings.
 
-* Phase-two measurements
+** Symbol-batching measurements
 
 Measured on 2026-09-08 with byte-compiled GNU Emacs 30.2 on Apple Silicon,
 using 30 iterations (150 samples per scenario) and the generated 128 KiB
@@ -68,7 +63,8 @@ Times are milliseconds.
 | align      |           2.770 |            2.821 |        3.393 |         3.709 |           0.0 |
 
 JIT and full-pass medians improve by approximately 27% and 26%, respectively;
-the symbol median improves by 65%.  Mean overlay counts match in every
+the symbol median improves by 65%. The corresponding p95 reductions are
+20%, 22%, and 64%.  Mean overlay counts match in every
 scenario, and the tests compare canonical overlay contents as well as counts.
 These are synthetic-fixture measurements, not a guarantee for every document.
 
