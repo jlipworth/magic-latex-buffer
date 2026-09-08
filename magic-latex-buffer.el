@@ -975,7 +975,7 @@ expressions.")
   "Cached segmented search plan for `ml/symbols'.")
 
 (defvar ml/symbol-plan-source nil
-  "Value of `ml/symbols' used to build `ml/symbol-plan-cache'.")
+  "Snapshot of `ml/symbols' used to build `ml/symbol-plan-cache'.")
 
 (defun ml/exact-symbol-source (symbol)
   "Return literal command text when SYMBOL has a simple exact regexp."
@@ -1025,9 +1025,15 @@ expressions.")
 
 (defun ml/symbol-plan ()
   "Return a cached search plan corresponding to `ml/symbols'."
-  (unless (eq ml/symbol-plan-source ml/symbols)
-    (setq ml/symbol-plan-source ml/symbols
-          ml/symbol-plan-cache (ml/build-symbol-plan)))
+  (unless (equal ml/symbol-plan-source ml/symbols)
+    (let ((plan (ml/build-symbol-plan))
+          (source (copy-tree ml/symbols)))
+      ;; `copy-tree' shares strings.  Copy regexps too so destructive
+      ;; string edits cannot silently leave a stale compiled search plan.
+      (dolist (symbol source)
+        (setcar symbol (copy-sequence (car symbol))))
+      (setq ml/symbol-plan-source source
+            ml/symbol-plan-cache plan)))
   ml/symbol-plan-cache)
 
 (defun ml/apply-symbol (symbol)

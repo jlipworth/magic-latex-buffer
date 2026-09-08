@@ -275,4 +275,57 @@
         (should (ml/search-regexp "\\\\alpha\\>"))
         (should (= expected (match-beginning 0)))))))
 
+(ert-deftest ml-test/symbol-plan-preserves-overlapping-rule-order ()
+  (dolist
+      (symbols
+       '((("\\\\f\\(?:oo\\)\\>" . "regexp-first")
+          ("\\\\foo\\>" . "exact-second"))
+         (("\\\\foo\\>" . "exact-first")
+          ("\\\\f\\(?:oo\\)\\>" . "regexp-second"))
+         (("\\\\foo\\>" . "duplicate-first")
+          ("\\\\foo\\>" . "duplicate-second"))
+         (("\\\\\\([[:alpha:]]+\\)\\>" . (upcase (match-string 1)))
+          ("\\\\foo\\>" . "exact-after-capture"))))
+    (let ((ml/symbols symbols)
+          (ml/symbol-plan-cache nil)
+          (ml/symbol-plan-source nil)
+          (content "\\foo \\\\foo % \\foo\n\\begin{verbatim}\\foo\\end{verbatim}\n"))
+      (should
+       (equal
+        (ml-test/symbol-snapshot #'ml-test/reference-prettify-symbols content)
+        (ml-test/symbol-snapshot #'ml/prettify-symbols content))))))
+
+
+(ert-deftest ml-test/symbol-plan-tracks-in-place-edits ()
+  ;; Start each case with a populated cache, then edit without replacing
+  ;; the top-level list.  Include destructive string edits as well as conses.
+  (dolist (edit
+           (list
+            (lambda () (setcar (car ml/symbols) "\\\\bar\\>"))
+            (lambda () (aset (caar ml/symbols) 2 ?b))
+            (lambda () (setcar ml/symbols
+                              (cons "\\\\foo\\>" "replacement")))
+            (lambda () (setcdr (car ml/symbols) "new display"))
+            (lambda () (setcdr ml/symbols
+                              (list (cons "\\\\bar\\>" "added"))))))
+    (let ((ml/symbols (list (cons (copy-sequence "\\\\foo\\>") "original")))
+          (ml/symbol-plan-source nil)
+          (ml/symbol-plan-cache nil))
+      (ml/symbol-plan)
+      (funcall edit)
+      (should (equal (mapcar #'cadr (ml/symbol-plan))
+                     (mapcar #'cadr (ml/build-symbol-plan))))
+      (let ((content "\\foo \\bar \\boo"))
+        (should
+         (equal
+          (ml-test/symbol-snapshot #'ml-test/reference-prettify-symbols content)
+          (ml-test/symbol-snapshot #'ml/prettify-symbols content)))))))
+
+(ert-deftest ml-test/symbol-plan-reuses-unchanged-cache ()
+  (let ((ml/symbols (list (cons "\\\\foo\\>" "display")))
+        (ml/symbol-plan-source nil)
+        (ml/symbol-plan-cache nil))
+    (let ((plan (ml/symbol-plan)))
+      (should (eq plan (ml/symbol-plan))))))
+
 ;;; magic-latex-buffer-test.el ends here

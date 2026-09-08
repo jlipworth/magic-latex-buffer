@@ -1,8 +1,9 @@
 #+title: Magic LaTeX tests and performance benchmark
 
-This directory contains a deterministic 128 KiB LaTeX document, behavioral
-ERT tests, visual-parity checks, and a viewport benchmark.  The fixture is
-synthetic and contains no personal or proprietary material.
+This directory contains a deterministic generator for a synthetic 128 KiB
+LaTeX fixture, behavioral ERT tests, overlay-parity checks, and a viewport
+benchmark.  The generated fixture contains no personal material and is not
+committed.
 
 * Run the tests
 
@@ -10,9 +11,13 @@ synthetic and contains no personal or proprietary material.
 make test
 #+end_src
 
-The tests verify escaped-command, backward-search, point-safety, failure, and
-match-data behavior.  They also compare every symbol overlay produced by the
-segmented scanner against the original scanner over the generic fixture.
+The fixture is generated automatically when needed.  The 13 tests cover the
+filtered-search contract, escaped commands, comments and verbatim regions,
+overlay parity, custom-rule precedence (including duplicates and capture
+expressions), cache reuse, and in-place edits to custom symbol rules.
+
+The cache regression exercises regexp replacement, destructive regexp-string
+editing, whole-rule replacement, display replacement, and list extension.
 
 * Rebuild the fixture
 
@@ -20,8 +25,7 @@ segmented scanner against the original scanner over the generic fixture.
 make fixture
 #+end_src
 
-The generator is deterministic.  Pass a different size in KiB directly when
-a larger stress document is useful:
+The generator is deterministic.  To generate a larger stress document:
 
 #+begin_src shell
 emacs -Q --batch -l test/generate-large-fixture.el -- /tmp/large.tex 512
@@ -29,36 +33,44 @@ emacs -Q --batch -l test/generate-large-fixture.el -- /tmp/large.tex 512
 
 * Compare revisions
 
-Run the same 100-sample benchmark against =master= and the current checkout:
+Compare the merged iterative-search baseline with this branch:
 
 #+begin_src shell
-MLB_BENCH_ITERATIONS=20 test/compare-performance.sh master
+git fetch upstream
+make fixture
+MLB_BENCH_ITERATIONS=30 test/compare-performance.sh 31eb152 HEAD
 #+end_src
 
-The script prints both TSV result sets.  =MLB_BENCH_ITERATIONS= defaults to 20
-and each iteration samples five 80-line viewports.
+Use the remote name configured for =zk-phi/magic-latex-buffer= if it is not
+=upstream=.  The script accepts any two local Git revisions and byte-compiles
+both by default.  Set =MLB_BENCH_COMPILED=0= to compare source-loaded code.
 
-* Reference measurements
+Each iteration samples five 80-line viewports.  The =jit= scenario invalidates
+each viewport before calling =jit-lock-fontify-now=.  The =full= scenario times
+block highlighting, alignment, sub/superscripts, and symbols directly.  Other
+scenarios isolate individual feature families.
 
-These measurements were collected on 2026-09-01 using GNU Emacs 30.2 on an
-Apple M3 Ultra.  Times are milliseconds; each row contains 100 samples.
+* Phase-two measurements
 
-| Revision             | Scenario | Median | p95   | Mean overlays |
-|----------------------+----------+--------+-------+---------------|
-| upstream =master=    | full     | 27.573 | 44.236 |         495.6 |
-| iterative search     | full     | 13.710 | 18.010 |         495.6 |
-| segmented symbols    | full     |  9.796 | 14.438 |         495.6 |
-| upstream =master=    | symbols  | 20.979 | 33.614 |         180.8 |
-| iterative search     | symbols  |  7.542 |  7.954 |         180.8 |
-| segmented symbols    | symbols  |  3.482 |  3.785 |         180.8 |
+Measured on 2026-09-08 with byte-compiled GNU Emacs 30.2 on Apple Silicon,
+using 30 iterations (150 samples per scenario) and the generated 128 KiB
+fixture.  The candidate includes the content-aware cache fix.  The baseline
+is merged PR #47 (=31eb152=), not the older recursive-search implementation.
+Times are milliseconds.
 
-The final implementation reduced the complete median by 64% and p95 by 67%.
-The isolated symbol pass fell by 83% at the median and 89% at p95.  Overlay
-counts and canonical source/display/priority records were identical.
+| Scenario   | Baseline median | Candidate median | Baseline p95 | Candidate p95 | Mean overlays |
+|------------+-----------------+------------------+--------------+---------------+---------------|
+| jit        |          12.333 |            8.959 |       15.445 |        12.303 |         516.0 |
+| full       |          13.588 |           10.046 |       17.051 |        13.336 |         495.6 |
+| symbols    |           5.564 |            1.927 |        6.035 |         2.145 |         180.8 |
+| no-symbols |           8.047 |            8.194 |       11.106 |        11.335 |         314.8 |
+| blocks     |           5.163 |            5.255 |        7.725 |         7.844 |         193.2 |
+| align      |           2.770 |            2.821 |        3.393 |         3.709 |           0.0 |
 
-An iterative block-traversal experiment is intentionally kept on the separate
-=codex/iterative-blocks= branch.  It prevents evaluation-depth failures, but
-adds a full backward scan when the reference implementation would fail early;
-on this fixture it increased the complete median from 9.796 ms to 20.878 ms.
-That correctness/performance tradeoff should not be mixed into the unambiguous
-search and symbol speedup.
+JIT and full-pass medians improve by approximately 27% and 26%, respectively;
+the symbol median improves by 65%.  Mean overlay counts match in every
+scenario, and the tests compare canonical overlay contents as well as counts.
+These are synthetic-fixture measurements, not a guarantee for every document.
+
+Single-pass block scanning and broader built-in symbol batching are separate
+follow-ups and are not included in this comparison.
