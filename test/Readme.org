@@ -1,0 +1,40 @@
+* Tests and performance benchmark
+
+The behavioral tests exercise the observable contract of the filtered
+regexp search, including direction, failure behavior, match data,
+escaped commands, ignored regions, and point safety.
+
+** Run the tests
+
+: make test
+
+** Generate the performance fixture
+
+The benchmark input is deterministic and contains no personal or
+proprietary material. It is generated rather than committed to keep
+the patch small:
+
+: make fixture
+
+Pass another size in KiB when a larger stress document is useful:
+
+: emacs -Q --batch -l test/generate-large-fixture.el -- /tmp/large.tex 512
+
+** Compare revisions
+
+The comparison script builds isolated, byte-compiled copies of both
+revisions and measures five 80-line viewports per iteration. From this
+branch, compare the upstream master branch with the proposed change:
+
+: MLB_BENCH_ITERATIONS=20 test/compare-performance.sh master HEAD
+
+The two arguments may be any locally available Git revisions. For
+example, use =origin/master= instead of =master= after fetching the
+upstream branch into a remote-tracking ref.
+
+Set =MLB_BENCH_COMPILED=0= to compare source-loaded code. The =jit=
+scenario invalidates the sampled viewport before timing
+=jit-lock-fontify-now=. The remaining scenarios directly time the
+complete Magic LaTeX pass or an individual display-feature family.
+Overlay counts are printed as a basic output-parity guard alongside
+the timings.
