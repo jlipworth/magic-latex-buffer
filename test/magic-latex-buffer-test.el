@@ -250,6 +250,13 @@
     (let ((plan (ml/symbol-plan)))
       (should (eq plan (ml/symbol-plan))))))
 
+(defmacro ml-test/with-reference-search (&rest body)
+  "Run BODY with every `ml/search-regexp' call routed to the original search."
+  `(cl-letf (((symbol-function 'ml/search-regexp)
+              #'ml-test/reference-search-regexp))
+     ,@body))
+
+
 (defun ml-test/reference-prettify-symbols (beg end)
   "Run the original one-regexp-per-symbol implementation from BEG to END."
   (ml-test/with-reference-search
